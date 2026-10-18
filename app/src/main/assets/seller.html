@@ -1,0 +1,66 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>dndn</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;height:100dvh;display:flex;background:#ece5dd}
+#list{width:300px;background:#fff;overflow:auto;border-inline-end:1px solid #ddd}
+#list h2{margin:0;padding:14px;background:#075e54;color:#fff;font-size:20px;display:flex;justify-content:space-between}
+#list h2 button{background:none;font-size:20px;padding:0}
+#set{display:flex;gap:6px;padding:8px;background:#f5f5f5}
+#info{padding:10px 14px;font-size:13px;color:#444;background:#f9f9f9;border-bottom:1px solid #eee}
+.th{padding:14px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;cursor:pointer}
+.th.on{background:#e8f5e9}.b{background:#25d366;color:#fff;border-radius:50px;padding:0 8px;font-size:13px}
+#chat{flex:1;display:flex;flex-direction:column;min-width:0}
+#hd{background:#075e54;color:#fff;padding:12px;font-weight:700}
+#msgs{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:6px}
+.m{max-width:80%;padding:8px 10px;border-radius:10px;white-space:pre-wrap;word-break:break-word}
+.s{background:#dcf8c6;align-self:flex-end}.c{background:#fff;align-self:flex-start}
+.m img{max-width:100%;border-radius:8px;display:block}
+#bar{display:flex;gap:6px;padding:8px;background:#f0f0f0}
+input[type=text]{flex:1;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;min-width:0}
+button{background:#075e54;color:#fff;border:0;border-radius:8px;padding:10px 14px;font-size:15px}
+label{padding:8px;font-size:22px}
+@media(max-width:700px){#list{width:100%}#chat{display:none}body.open #list{display:none}body.open #chat{display:flex}}
+</style></head><body>
+<div id="list"><h2><span>dndn</span><button id="gear">⚙</button></h2>
+<div id="set" hidden><input id="sn" type="text" placeholder="اسمك الذي يظهر للزبائن"><button id="ss">حفظ</button></div>
+<div id="info"><div id="ad">...</div><div id="cnt"></div></div><div id="ths"></div></div>
+<div id="chat"><div id="hd"><button onclick="document.body.classList.remove('open')">←</button> <span id="nm">اختر زبونًا</span></div>
+<div id="msgs"></div>
+<div id="bar"><label>📷<input id="f" type="file" accept="image/*" hidden></label>
+<input id="t" type="text" placeholder="رسالة..."><button onclick="send()">إرسال</button>
+<button id="all" style="background:#555">📢</button></div></div>
+<script>
+const $=x=>document.getElementById(x);let T={},on=new Set(),cur=null,un={};
+const es=new EventSource('/api/stream?role=seller');
+es.addEventListener('init',e=>{const d=JSON.parse(e.data);T=d.threads;on=new Set(d.online);list()});
+es.addEventListener('presence',e=>{on=new Set(JSON.parse(e.data));list();hdr()});
+es.addEventListener('thread',e=>{const d=JSON.parse(e.data);T[d.id]=d.thread;list();hdr()});
+es.addEventListener('msg',e=>{const {id,m}=JSON.parse(e.data);if(!T[id])return;T[id].msgs.push(m);
+  if(id==cur)add(m);else if(m.from=='c')un[id]=(un[id]||0)+1;list()});
+fetch('/api/info').then(r=>r.json()).then(i=>{
+  $('ad').textContent=i.ips.length?'عنوان الزبائن: '+i.ips.map(x=>x+':8080').join(' ، '):'⚠ غير متصل بشبكة واي فاي';
+  $('sn').value=i.name});
+$('gear').onclick=()=>$('set').hidden=!$('set').hidden;
+$('ss').onclick=()=>fetch('/api/settings',{method:'POST',body:JSON.stringify({name:$('sn').value})}).then(()=>{$('set').hidden=true});
+const last=id=>(T[id].msgs.at(-1)||{t:0}).t;
+function list(){const ids=Object.keys(T).sort((a,b)=>last(b)-last(a));
+  $('cnt').textContent='🟢 متصل الآن: '+on.size+' من '+ids.length;
+  $('ths').innerHTML='';ids.forEach(id=>{const d=document.createElement('div');d.className='th'+(id==cur?' on':'');
+  d.innerHTML='<span></span>'+(un[id]?'<span class="b">'+un[id]+'</span>':'');
+  d.firstChild.textContent=(on.has(id)?'🟢 ':'⚪ ')+T[id].name;d.onclick=()=>open(id);$('ths').appendChild(d)})}
+function hdr(){if(cur&&T[cur])$('nm').textContent=(on.has(cur)?'🟢 ':'⚪ ')+T[cur].name}
+function open(id){cur=id;un[id]=0;hdr();$('msgs').innerHTML='';T[id].msgs.forEach(add);document.body.classList.add('open');list()}
+function add(m){const d=document.createElement('div');d.className='m '+m.from;
+  if(m.img){const i=new Image();i.src=m.img;d.appendChild(i)}if(m.text)d.appendChild(document.createTextNode(m.text));
+  $('msgs').appendChild(d);$('msgs').scrollTop=1e9}
+const post=b=>fetch('/api/send',{method:'POST',body:JSON.stringify(b)});
+function send(){const t=$('t').value.trim();if(!t||!cur)return;$('t').value='';post({to:cur,text:t})}
+let armed=false;$('all').onclick=()=>{const t=$('t').value.trim();if(!t)return;
+  if(!armed){armed=true;$('all').textContent='للجميع؟';setTimeout(()=>{armed=false;$('all').textContent='📢'},3000);return}
+  armed=false;$('all').textContent='📢';$('t').value='';post({to:'*',text:t})};
+$('t').onkeydown=e=>{if(e.key=='Enter')send()};
+$('f').onchange=e=>{const f=e.target.files[0];if(!f||!cur)return;const im=new Image();
+  im.onload=()=>{const k=Math.min(1,900/Math.max(im.width,im.height)),c=document.createElement('canvas');
+  c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+  post({to:cur,img:c.toDataURL('image/jpeg',.7)});e.target.value=''};im.src=URL.createObjectURL(f)};
+</script></body></html>

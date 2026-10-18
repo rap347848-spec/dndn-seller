@@ -1,1 +1,48 @@
-
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>طلب ورق</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#ece5dd;height:100dvh;display:flex;flex-direction:column}
+header{background:#075e54;color:#fff;padding:12px 14px;display:flex;justify-content:space-between;align-items:center}
+#h{font-weight:700;font-size:18px}#st{font-size:13px}
+#join{margin:auto;background:#fff;padding:24px;border-radius:12px;width:min(90%,340px);text-align:center}
+input[type=text]{width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px}
+button{background:#075e54;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-size:16px}
+#msgs{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:6px}
+.m{max-width:80%;padding:8px 10px;border-radius:10px;white-space:pre-wrap;word-break:break-word}
+.s{background:#fff;align-self:flex-start}.c{background:#dcf8c6;align-self:flex-end}
+.m img{max-width:100%;border-radius:8px;display:block}
+#bar{display:flex;gap:6px;padding:8px;background:#f0f0f0}#bar input[type=text]{flex:1}#bar label{padding:8px;font-size:22px}
+</style></head><body>
+<header><span id="h">...</span><span id="st">⚪ جاري الاتصال</span></header>
+<div id="join"><p>اكتب اسمك لتبدأ</p><input id="n" type="text" placeholder="اسمك"><br><br><button onclick="join()">دخول</button></div>
+<div id="msgs" hidden></div>
+<div id="bar" hidden><label>📷<input id="f" type="file" accept="image/*" hidden></label>
+<input id="t" type="text" placeholder="اكتب رسالتك..."><button onclick="send()">إرسال</button></div>
+<script>
+const A=window.App,$=x=>document.getElementById(x);
+let id=A?A.getId():(localStorage.cid||''),nm=A?A.getName():(localStorage.cname||''),off=null;
+function keep(){if(A){A.setId(id);A.setName(nm)}else{localStorage.cid=id;localStorage.cname=nm}}
+$('n').value=nm;if(id&&nm)join();
+async function join(){
+  const name=$('n').value.trim();if(!name)return;
+  const r=await fetch('/api/join',{method:'POST',body:JSON.stringify({id,name})}).then(r=>r.json());
+  id=r.id;nm=name;keep();$('h').textContent=r.seller;
+  $('join').hidden=true;$('msgs').hidden=false;$('bar').hidden=false;
+  const es=new EventSource('/api/stream?id='+id);
+  es.onopen=()=>{clearTimeout(off);off=null;$('st').textContent='🟢 متصل'};
+  es.onerror=()=>{$('st').textContent='🔴 غير متصل';
+    if(!off)off=setTimeout(()=>{A?A.lost():location.reload()},10000)};
+  es.addEventListener('init',e=>{const d=JSON.parse(e.data);$('h').textContent=d.seller;$('msgs').innerHTML='';d.msgs.forEach(add)});
+  es.addEventListener('msg',e=>add(JSON.parse(e.data)));
+}
+function add(m){const d=document.createElement('div');d.className='m '+m.from;
+  if(m.img){const i=new Image();i.src=m.img;d.appendChild(i)}if(m.text)d.appendChild(document.createTextNode(m.text));
+  $('msgs').appendChild(d);$('msgs').scrollTop=1e9}
+const post=b=>fetch('/api/send',{method:'POST',body:JSON.stringify({id,...b})});
+function send(){const t=$('t').value.trim();if(!t)return;$('t').value='';post({text:t})}
+$('t').onkeydown=e=>{if(e.key=='Enter')send()};
+$('f').onchange=e=>{const f=e.target.files[0];if(!f)return;const im=new Image();
+  im.onload=()=>{const k=Math.min(1,900/Math.max(im.width,im.height)),c=document.createElement('canvas');
+  c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+  post({img:c.toDataURL('image/jpeg',.7)});e.target.value=''};im.src=URL.createObjectURL(f)};
+</script></body></html>
